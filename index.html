@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cedi Ledger – daily sales tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef3ec; --card:#ffffff; --ink:#14231b; --muted:#5d6f64;
+  --line:#d3ddd4; --sale:#1e7a4c; --spend:#b8422e; --gold:#e0a100;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1913; --card:#16241c; --ink:#e8f0e9; --muted:#93a79a; --line:#2a3d31; --sale:#4cc38a; --spend:#ee8a76; --gold:#f2bb2e;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "DM Sans",system-ui,sans-serif;padding:24px 16px 48px}
+main{max-width:640px;margin:0 auto}
+h1{font:800 clamp(2rem,7vw,3rem)/1 "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 4px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 24px}
+.profit{background:var(--ink);color:var(--bg);border-radius:14px;padding:20px 22px;margin-bottom:12px;border-left:8px solid var(--gold)}
+.profit small{opacity:.75;display:block}
+.profit strong{font:800 clamp(2rem,9vw,3.2rem)/1.1 "Bricolage Grotesque",system-ui,sans-serif}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.split div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.split span{color:var(--muted);font-size:.85rem;display:block}
+.split b{font-size:1.2rem}
+#s b{color:var(--sale)} #e b{color:var(--spend)}
+form{display:grid;grid-template-columns:1fr 130px;gap:10px;margin-bottom:10px}
+input,select,button{font:inherit;padding:11px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+input[name=item]{grid-column:1/-1}
+button{cursor:pointer;font-weight:700}
+button.primary{grid-column:1/-1;background:var(--sale);color:#fff;border-color:var(--sale)}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.tools{display:flex;justify-content:space-between;align-items:center;margin:28px 0 8px}
+.tools h2{margin:0;font:600 1.2rem "Bricolage Grotesque",system-ui,sans-serif}
+.tools button{font-size:.85rem;padding:6px 10px}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+li .name{flex:1}
+li .time{color:var(--muted);font-size:.8rem;display:block}
+li .amt{font-weight:700}
+li.sale .amt{color:var(--sale)} li.spend .amt{color:var(--spend)}
+li button{border:none;background:none;color:var(--muted);padding:4px 8px;font-size:1.1rem}
+.empty{color:var(--muted);padding:20px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Cedi Ledger</h1>
+  <p class="sub" id="today"></p>
+
+  <section class="profit" aria-live="polite">
+    <small>Profit today</small>
+    <strong id="profit">GH₵ 0.00</strong>
+  </section>
+  <section class="split">
+    <div id="s"><span>Sales</span><b>GH₵ 0.00</b></div>
+    <div id="e"><span>Expenses</span><b>GH₵ 0.00</b></div>
+  </section>
+
+  <form id="f">
+    <input name="item" placeholder="What was it? e.g. 2 kg chicken, ice, transport" required maxlength="60" aria-label="Item">
+    <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="Amount (GH₵)" required aria-label="Amount in cedis">
+    <select name="type" aria-label="Type">
+      <option value="sale">Sale</option>
+      <option value="spend">Expense</option>
+    </select>
+    <button class="primary" type="submit">Add entry</button>
+  </form>
+
+  <div class="tools">
+    <h2>Today’s entries</h2>
+    <div>
+      <button id="csv" type="button">Download CSV</button>
+      <button id="clear" type="button">Clear today</button>
+    </div>
+  </div>
+  <ul id="list"></ul>
+</main>
+
+<script>
+const KEY = "cedi-ledger-v1";
+const $ = id => document.getElementById(id);
+const fmt = n => "GH₵ " + n.toLocaleString("en-GH", {minimumFractionDigits:2, maximumFractionDigits:2});
+const dayKey = d => d.toISOString().slice(0,10);
+
+function load(){ try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(entries)); } catch {} }
+
+let entries = load();
+const todays = () => entries.filter(e => e.day === dayKey(new Date()));
+
+$("today").textContent = new Date().toLocaleDateString("en-GB", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
+
+function render(){
+  const t = todays();
+  const sales = t.filter(e => e.type === "sale").reduce((a,e) => a + e.amount, 0);
+  const spend = t.filter(e => e.type === "spend").reduce((a,e) => a + e.amount, 0);
+  $("profit").textContent = fmt(sales - spend);
+  $("s").querySelector("b").textContent = fmt(sales);
+  $("e").querySelector("b").textContent = fmt(spend);
+
+  const list = $("list");
+  list.innerHTML = "";
+  if (!t.length){
+    list.innerHTML = '<li class="empty">Nothing yet. Add your first sale or expense above.</li>';
+    return;
+  }
+  [...t].reverse().forEach(e => {
+    const li = document.createElement("li");
+    li.className = e.type;
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = e.item;
+    const time = document.createElement("span");
+    time.className = "time";
+    time.textContent = new Date(e.id).toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"});
+    name.appendChild(time);
+    const amt = document.createElement("span");
+    amt.className = "amt";
+    amt.textContent = (e.type === "sale" ? "+ " : "– ") + fmt(e.amount);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "×";
+    del.setAttribute("aria-label", "Delete " + e.item);
+    del.onclick = () => { entries = entries.filter(x => x.id !== e.id); save(); render(); };
+    li.append(name, amt, del);
+    list.appendChild(li);
+  });
+}
+
+$("f").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const d = new FormData(ev.target);
+  entries.push({
+    id: Date.now(),
+    day: dayKey(new Date()),
+    item: d.get("item").trim(),
+    amount: parseFloat(d.get("amount")),
+    type: d.get("type")
+  });
+  save(); render();
+  ev.target.item.value = ""; ev.target.amount.value = "";
+  ev.target.item.focus();
+});
+
+$("clear").onclick = () => {
+  if (todays().length && confirm("Delete all of today’s entries?")){
+    entries = entries.filter(e => e.day !== dayKey(new Date()));
+    save(); render();
+  }
+};
+
+$("csv").onclick = () => {
+  const rows = [["date","item","type","amount_ghs"], ...entries.map(e => [e.day, '"' + e.item.replace(/"/g,'""') + '"', e.type, e.amount])];
+  const blob = new Blob([rows.map(r => r.join(",")).join("\n")], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cedi-ledger.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+render();
+</script>
+</body>
+</html>
